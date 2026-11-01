@@ -1,0 +1,138 @@
+// github.com/era-lang-official/uuid
+// RFC 4122 UUID v4 and UUID v7 implementation
+
+import "github.com/era-lang-official/crypto";
+
+fn uuid_str_slice(s: string, start: usize, end: usize) -> string {
+    let s_chars: Vec<char> = s.chars();
+    let mut sb = StringBuilder::new();
+    let mut i = start;
+    let limit = if end > s_chars.len() { s_chars.len() } else { end };
+    while i < limit {
+        sb.append(s_chars[i].to_string());
+        i += 1;
+    }
+    return sb.to_string();
+}
+
+pub fn uuid_v4() -> string {
+    let seed = f"uuid_seed_{std::time::now()}_{1337}";
+    let hash = sha256(seed); // 64 hex characters
+    let hex_chars: Vec<char> = hash.chars();
+
+    let mut sb = StringBuilder::new();
+
+    // 8 chars: time-low
+    let mut i: usize = 0;
+    while i < 8 {
+        sb.append(hex_chars[i].to_string());
+        i += 1;
+    }
+    sb.append("-");
+
+    // 4 chars: time-mid
+    while i < 12 {
+        sb.append(hex_chars[i].to_string());
+        i += 1;
+    }
+    sb.append("-");
+
+    // 4 chars: version 4 -> 4xxx
+    sb.append("4");
+    sb.append(hex_chars[13].to_string());
+    sb.append(hex_chars[14].to_string());
+    sb.append(hex_chars[15].to_string());
+    sb.append("-");
+
+    // 4 chars: variant 1 -> (8, 9, a, b)xxx
+    let var_nibble = ((hex_chars[16] as i64) & 3) | 8;
+    let hex_digits = "0123456789abcdef";
+    sb.append(uuid_str_slice(hex_digits.to_string(), var_nibble as usize, (var_nibble + 1) as usize));
+    sb.append(hex_chars[17].to_string());
+    sb.append(hex_chars[18].to_string());
+    sb.append(hex_chars[19].to_string());
+    sb.append("-");
+
+    // 12 chars: node
+    i = 20;
+    while i < 32 {
+        sb.append(hex_chars[i].to_string());
+        i += 1;
+    }
+
+    return sb.to_string();
+}
+
+pub fn uuid_v7() -> string {
+    let now = std::time::now(); // timestamp in ms
+    let hex_digits = "0123456789abcdef";
+
+    // 48-bit timestamp in hex (12 hex digits)
+    let mut ts_sb = StringBuilder::new();
+    let mut shift: usize = 44;
+    while shift <= 44 {
+        let nibble = ((now >> (shift as i64)) & 15) as usize;
+        ts_sb.append(uuid_str_slice(hex_digits.to_string(), nibble, nibble + 1));
+        if shift == 0 {
+            break;
+        }
+        shift -= 4;
+    }
+    let ts_hex = ts_sb.to_string();
+
+    let random_hash = sha256(f"v7_rand_{now}_{1337}");
+    let rand_chars: Vec<char> = random_hash.chars();
+
+    let mut sb = StringBuilder::new();
+    // 8 chars timestamp-high
+    sb.append(uuid_str_slice(ts_hex.clone(), 0, 8));
+    sb.append("-");
+    // 4 chars timestamp-low
+    sb.append(uuid_str_slice(ts_hex, 8, 12));
+    sb.append("-");
+    // 4 chars: version 7 -> 7xxx
+    sb.append("7");
+    sb.append(rand_chars[0].to_string());
+    sb.append(rand_chars[1].to_string());
+    sb.append(rand_chars[2].to_string());
+    sb.append("-");
+    // 4 chars: variant 1
+    let var_nibble = ((rand_chars[3] as i64) & 3) | 8;
+    sb.append(uuid_str_slice(hex_digits.to_string(), var_nibble as usize, (var_nibble + 1) as usize));
+    sb.append(rand_chars[4].to_string());
+    sb.append(rand_chars[5].to_string());
+    sb.append(rand_chars[6].to_string());
+    sb.append("-");
+    // 12 chars random
+    let mut k: usize = 7;
+    while k < 19 {
+        sb.append(rand_chars[k].to_string());
+        k += 1;
+    }
+
+    return sb.to_string();
+}
+
+pub fn is_valid_uuid(uuid_str: string) -> bool {
+    if uuid_str.len() != 36 {
+        return false;
+    }
+    let chars: Vec<char> = uuid_str.chars();
+    if chars[8] != '-' || chars[13] != '-' || chars[18] != '-' || chars[23] != '-' {
+        return false;
+    }
+    let mut i: usize = 0;
+    while i < 36 {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            i += 1;
+            continue;
+        }
+        let code = chars[i] as i64;
+        let is_hex = (code >= 48 && code <= 57) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102);
+        if !is_hex {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
